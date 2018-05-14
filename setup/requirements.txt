@@ -1,0 +1,11 @@
+# Requirements without Version Specifiers
+numpy
+scipy
+pandas
+scikit-learn
+psycopg2
+sqlalchemy
+pymongo
+surprise
+# preferred cli
+ipython

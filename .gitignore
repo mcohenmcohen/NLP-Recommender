@@ -1,0 +1,12 @@
+*.csv
+**/*.csv
+*.ipynb
+**/*.ipynb
+*.config
+**/*.config
+*.sql
+**/.sql
+*.pyc
+**/.pyc
+*.gensim
+**/.gensim
