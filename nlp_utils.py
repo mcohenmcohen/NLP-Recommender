@@ -31,17 +31,17 @@ def get_doc2vec_model(in_docs):
                         window=10,
                         min_count=5,
                         workers=4)
-    print "Building Doc2Vec vocabulary..."
+    print("Building Doc2Vec vocabulary...")
     t1 = time.time()
     d2v_model.build_vocab(labeled_docs)
-    print "- Time: %0.3fs.\n" % (time.time() - t1)
+    print("- Time: %0.3fs.\n" % (time.time() - t1))
 
-    print "Doc2Vec model train..."
+    print("Doc2Vec model train...")
     t1 = time.time()
     d2v_model.train(labeled_docs,
                     total_examples=len(labeled_docs),
                     epochs=20)
-    print "- Time: %0.3fs.\n" % (time.time() - t1)
+    print("- Time: %0.3fs.\n" % (time.time() - t1))
 
     return d2v_model
 
@@ -75,7 +75,7 @@ def get_d2v_glove(infile=GLOVE_50_PATH):
 def get_glove():
     with open(GLOVE_50_PATH, 'rb') as lines:
         w2v = {
-            line.split()[0]: np.array(map(float, line.split()[1:])) for line in lines
+            line.split()[0]: np.array(list(map(float, line.split()[1:]))) for line in lines
         }
     return w2v
 
@@ -90,7 +90,7 @@ def get_tokenized_docs(in_docs):
 
     new_docs = []
 
-    print 'Tokenizing docs...'
+    print('Tokenizing docs...')
     t1 = time.time()
     for doc in in_docs:
         if doc is None:
@@ -101,7 +101,7 @@ def get_tokenized_docs(in_docs):
         #      if pattern.match(w)]
         d = [w for w in analyzer(doc)]
         new_docs.append(d)
-    print '- Time: %s\n' % (time.time() - t1)
+    print('- Time: %s\n' % (time.time() - t1))
 
     return new_docs
 
@@ -123,12 +123,12 @@ def get_tagged_docs(in_docs, tag_prefix):
     if type(in_docs) == list:
         in_doc_tokens = in_docs
     else:
-        print 'Tokenizing docs...'
+        print('Tokenizing docs...')
         t1 = time.time()
         # in_doc_tokens = get_tokenized_docs(in_docs)
         docgen = TokenGenerator(in_docs)
         in_doc_tokens = [tokens for tokens in docgen]
-        print "- Time: %0.3fs.\n" % (time.time() - t1)
+        print("- Time: %0.3fs.\n" % (time.time() - t1))
     labeled_docs = []
     # print "\nCreating LabeledSentences..."
     t1 = time.time()
@@ -197,7 +197,7 @@ class MeanEmbeddingVectorizer(object):
         self.word2vec = word2vec
         # if a text is empty we should return a vector of zeros
         # with the same dimensionality as all the other vectors
-        self.dim = len(word2vec.itervalues().next())
+        self.dim = len(next(iter(word2vec.values())))
         self.analyer = LocalwiseVectorizer().build_analyzer()
 
     def fit(self, X, y):
@@ -244,7 +244,7 @@ def boost_doc_title_terms_tfidf(titles, vectorizer, document_term_mat, scale=1):
     Output:
         The modified document_term_mat
     '''
-    print "Boosting title terms in document term matrix..."
+    print("Boosting title terms in document term matrix...")
     t1 = time.time()
 
     document_term_mat = document_term_mat.tolil()  # tolil()
@@ -272,13 +272,13 @@ def boost_doc_title_terms_tfidf(titles, vectorizer, document_term_mat, scale=1):
                       if w.isalpha()
                       if pattern.match(w)
                       if len(set(w.split()).intersection(sw)) == 0]
-        for exception in exception_stems.iterkeys():
+        for exception in exception_stems.keys():
             if exception in doc_titles:
                 doc_titles = doc_titles + exception_stems[exception]
         titles_in_doc_terms = set(doc_titles).intersection(doc_terms)
 
-        tfidf_scores = zip(doc_terms_indicies, [document_term_mat[doc_index, x]
-                                                for x in doc_terms_indicies])
+        tfidf_scores = list(zip(doc_terms_indicies, [document_term_mat[doc_index, x]
+                                                for x in doc_terms_indicies]))
         tfidf_dict = {all_feature_names[i]: (score, i)
                       for (i, score) in tfidf_scores}
 
@@ -287,13 +287,13 @@ def boost_doc_title_terms_tfidf(titles, vectorizer, document_term_mat, scale=1):
             new_tfidf = document_term_mat[doc_index, t_idx] * scale
             document_term_mat[doc_index, t_idx] = max(new_tfidf, 1.0)
 
-    print "- Time: %0.3fs.\n" % (time.time() - t1)
+    print("- Time: %0.3fs.\n" % (time.time() - t1))
 
     return document_term_mat.tocsr()
 
 
 def get_token_pattern():
-    token_pattern = u'(?ui)\\b[a-zA-Z]*[a-z]+\\w*\\b'
+    token_pattern = '(?ui)\\b[a-zA-Z]*[a-z]+\\w*\\b'
     return token_pattern
 
 
@@ -336,11 +336,15 @@ def get_stop_words():
         'asdf', 'persuasion', 'select', 'extent', 'strictly', 'admitted',
         'treated', 'discrimination', 'religious', 'relating', 'staffing', 'fair',
         'character', 'discus', 'upstairs', 'super', 'motivate', 'type',
-        'required'
+        'required',
+
+        'episode', 'unspecified', 'specified', 'stated', 'condition', 'care',
+        'not', 'applicable', 'condition', 'effect', 'classified', 'personal',
+        'involving', 'unknown', 'degree'
         ]
 
     # Remove all 2 letter words
-    all_two_letter_words = map(''.join, product(ascii_lowercase, repeat=2))
+    all_two_letter_words = list(map(''.join, product(ascii_lowercase, repeat=2)))
 
     added_stop_words = cusotm_stop_words + all_two_letter_words
 

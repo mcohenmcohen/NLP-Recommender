@@ -25,7 +25,6 @@ class TopicModeller(object):
         '''
         Input:
             max_vocab_size - upper bound limit to the number of features/terms
-            k_topics - k number of topics to generate
             min_df - vectorizer: min document frequency
             max_df - vectorizer: ignore words with a document frequency above %
             ngram_range - number of ngrams to search for, starting from 1.
@@ -65,9 +64,6 @@ class TopicModeller(object):
                                                   max_df=max_df,
                                                   ngram_range=ngram_range)
 
-            self.model = NMF(n_components=k_topics,
-                             alpha=.1, l1_ratio=.5, init='nndsvd')
-
         # For LDA
         elif self.model_type == 'lda':
             # Use tf (raw term count) features for LDA.
@@ -76,12 +72,6 @@ class TopicModeller(object):
                                               max_features=max_vocab_size,
                                               stop_words=stop_words,
                                               ngram_range=ngram_range)
-
-            self.model = LatentDirichletAllocation(n_components=k_topics,
-                                                   max_iter=5,
-                                                   learning_method='online',
-                                                   learning_offset=50.,
-                                                   random_state=0)
 
     def vectorize(self, docs):
         '''
@@ -94,30 +84,51 @@ class TopicModeller(object):
         '''
         # list of document content
         # eg, resume content for each user or job posting description content
-        print 'Number of documents to process: %s\n' % docs.shape
+        print('Number of documents to process: %s\n' % docs.shape)
 
-        print "Extracting Vectorizer features..."
+        print("Extracting Vectorizer features...")
         t1 = time.time()
         self.document_term_mat = self.vectorizer.fit_transform(docs)
-        print "- Time: %0.3fs.\n" % (time.time() - t1)
+        print("- Time: %0.3fs.\n" % (time.time() - t1))
 
-    def fit(self, docs):
+    def fit(self, docs, k_topics):
+        '''
+        Input
+            docs - Documents to topic model
+            k_topics - k number of topics to generate
+        '''
         if self.document_term_mat is None:
-            print 'Vectorizer wasn\'t fitted.  ' \
-                  'Call your TopicModeller.vectorize first.'
+            print('Vectorizer wasn\'t fitted.  ' \
+                  'Call your TopicModeller.vectorize first.')
             return
 
-        print "Fitting %s model with %d documents.  " \
+        print("Fitting %s model with %d documents.  " \
               "Vectorizer: \n%s" % (self.model_type, docs.shape[0],
-                                    self.vectorizer)
+                                    self.vectorizer))
+
+        # for NMF
+        if self.model_type == 'nmf':
+            self.model = NMF(n_components=k_topics,
+                             alpha=.1, l1_ratio=.5, init='nndsvd')
+        # For LDA
+        elif self.model_type == 'lda':
+            self.model = LatentDirichletAllocation(n_components=k_topics,
+                                                   max_iter=5,
+                                                   learning_method='online',
+                                                   learning_offset=50.,
+                                                   random_state=0)
+        else:
+            print('Unsupported models type \'%s\'' % self.model_type)
+            return
+
         t1 = time.time()
         W = self.model.fit_transform(self.document_term_mat)
         H = self.model.components_
         if self.model.__class__.__name__.upper() == 'NMF':
             self.W = W
             self.H = H
-        print "- Time: %0.3fs.\n" % (time.time() - t1)
-        self.describe_matrix_factorization_results(self.document_term_mat, W, H)
+        print("- Time: %0.3fs.\n" % (time.time() - t1))
+        self.describe_matrix_factorization_results(self.document_term_mat, W, H, n_top_words=20)
 
         if self.d2v_model is None:
             self.d2v_model = nlp_utils.get_doc2vec_model(docs)
@@ -138,13 +149,13 @@ class TopicModeller(object):
         dfv = pd.DataFrame(dtm, columns=all_feature_names)
         return dfv
 
-    def print_top_words(self, model, feature_names, n_top=15):
-        for topic_idx, topic in enumerate(model.components_):
-            message = 'Topic #%d: ' % topic_idx
-            message += ' '.join([feature_names[i]
-                                 for i in topic.argsort()[:-n_top - 1:-1]])
-            print(message)
-        print()
+    # def print_top_words(self, model, feature_names, n_top=15):
+    #     for topic_idx, topic in enumerate(model.components_):
+    #         message = 'Topic #%d: ' % topic_idx
+    #         message += ' '.join([feature_names[i]
+    #                              for i in topic.argsort()[:-n_top - 1:-1]])
+    #         print(message)
+    #     print()
 
     def reconst_mse(self, target, left, right):
         '''
@@ -161,12 +172,12 @@ class TopicModeller(object):
         TODO: print probabilities
         '''
         feature_words = self.vectorizer.get_feature_names()
-        print "Reconstruction mse: %f" % (self.reconst_mse(document_term_mat,
-                                                           W, H))
+        print("Reconstruction mse: %f" % (self.reconst_mse(document_term_mat,
+                                                           W, H)))
         for topic_num, topic in enumerate(H):
             top_features = ', '.join([feature_words[i]
                                 for i in topic.argsort()[:-n_top_words-1:-1]])
-            print "Topic %d: %s\n" % (topic_num, top_features)
+            print("Topic %d: %s\n" % (topic_num, top_features))
 
         return
 
@@ -179,7 +190,7 @@ class TopicModeller(object):
         for col, term in enumerate(terms):
             weights[term] = sums[0, col]
         # rank the terms by their weight over all documents
-        return sorted(weights.items(), key=operator.itemgetter(1), reverse=True)
+        return sorted(list(weights.items()), key=operator.itemgetter(1), reverse=True)
 
     def get_doc_terms_and_scores(self, doc_index):
         '''
@@ -213,7 +224,7 @@ class TopicModeller(object):
         probs = (W / W.sum(axis=1, keepdims=True)).flatten()
         ordered = np.argsort(probs)[::-1]
         for idx in ordered:
-            print 'Topic %s: %0.3f' % (idx, probs[idx])
+            print('Topic %s: %0.3f' % (idx, probs[idx]))
 
     def get_normalized_probs(self, topic_weights):
         '''
@@ -259,10 +270,10 @@ class TopicModeller(object):
 
         # linalg.lstsq doesn't work on sparse mats
         dense_document_term_mat = document_term_mat[0:n_rows].todense()
-        print 'dense_document_term_mat shape: ', dense_document_term_mat.shape
+        print('dense_document_term_mat shape: ', dense_document_term_mat.shape)
 
         for i in range(n_iterations):
-            print 'iteration', i
+            print('iteration', i)
             H = np.linalg.lstsq(W, dense_document_term_mat)[0].clip(eps)
             W = np.linalg.lstsq(H.T, dense_document_term_mat.T)[0].clip(eps).T
         return np.array(W), np.array(H)
@@ -300,7 +311,7 @@ class TopicModeller(object):
         for idx in ordered:
             topic_dict[idx] = probs[idx]
             if display:
-                print 'Topic %s: %0.3f' % (idx, probs[idx])
+                print('Topic %s: %0.3f' % (idx, probs[idx]))
 
         return topic_dict
 
@@ -318,19 +329,22 @@ def plot_optimal_k(docs, document_term_mat, vectorizer,
         docs - corpus of docuemnts as a list
         document_term_mat - TFIDF matrix from the vectorizer
         vectorizer - scikit-learn TFIDF vectorizer (trained in TopicModeller)
+
+    Returns:
+        Int - optimal k number
     '''
     topic_models = []
 
     # Run NMF for each value of k
     for k in range(kmin, kmax+1):
-        print("Applying NMF for k=%d ..." % k)
+        print(("Applying NMF for k=%d ..." % k))
         # Run NMF
         t1 = time.time()
         model = NMF(n_components=k, init='nndsvd',
                     alpha=alpha, l1_ratio=l1_ratio)
         W = model.fit_transform(document_term_mat)
         H = model.components_
-        print "- Time: %0.3fs." % (time.time() - t1)
+        print("- Time: %0.3fs." % (time.time() - t1))
 
         # Store for iterating over all the models (of each k size)
         topic_models.append((k, W, H))
@@ -345,27 +359,28 @@ def plot_optimal_k(docs, document_term_mat, vectorizer,
     w2v_model = None
     try:
         w2v_model = gensim.models.Word2Vec.load(model_path)
-    except Exception, e:
-        print 'No Word2Vec model found at \'%s\' to load (%s).  ' \
-              'Building it...' % (model_path, e)
+    except Exception as e:
+        print('No Word2Vec model found at \'%s\' to load (%s).  ' \
+              'Building it...' % (model_path, e))
 
     w2v_model = None
     if w2v_model:
-        print 'Word2vec Model retrieved from %s' % model_path
+        print('Word2vec Model retrieved from %s' % model_path)
     else:
 
-        docgen = nlp_utils.TokenGenerator(docs, vectorizer)
+        # docgen = nlp_utils.TokenGenerator(docs, vectorizer)
+        docgen = nlp_utils.TokenGenerator(docs)
         # Process w2v with model of n dimensions and min doc-term freq as min_df
         t1 = time.time()
         w2v_model = gensim.models.Word2Vec(docgen, sg=1, size=dim_size,
                                            max_vocab_size=max_vocab_size,
                                            min_count=min_df)
-        print "- Time: %0.3fs." % (time.time() - t1)
+        print("- Time: %0.3fs." % (time.time() - t1))
         # Save for later use, so that we do not need to rebuild it:
-        print 'Saving Word2vec model'
+        print('Saving Word2vec model')
         w2v_model.save(model_path)
 
-    print('Model has %d terms' % len(w2v_model.wv.vocab))
+    print(('Model has %d terms' % len(w2v_model.wv.vocab)))
 
     # Implement TC-W2V coherence score measure
     def calculate_coherence(w2v_model, term_rankings):
@@ -408,13 +423,13 @@ def plot_optimal_k(docs, document_term_mat, vectorizer,
         for topic_index in range(k):
             # term_rankings.append(get_descriptor(vocab, H, topic_index, num_top_terms))
             top_words = [vocab[i] for i in H[topic_index, :].argsort()[:-num_top_terms - 1:-1]]
-            top_words = filter(lambda x: x in w2v_model.wv.vocab, top_words)
+            top_words = [x for x in top_words if x in w2v_model.wv.vocab]
             term_rankings.append(top_words)
         # Calculate the coherence based on our Word2vec model
         k_values.append(k)
         coherences.append(calculate_coherence(w2v_model, term_rankings))
-        print('K=%02d: Coherence=%.4f' % (k, coherences[-1]))
-        print
+        print(('K=%02d: Coherence=%.4f' % (k, coherences[-1])))
+        print()
 
     # Plot a line of coherence scores to identify an appropriate k value.
     plt.style.use("ggplot")
@@ -446,7 +461,9 @@ def plot_optimal_k(docs, document_term_mat, vectorizer,
         descriptor = get_descriptor(vectorizer.get_feature_names(),
                                     H, topic_index, num_top_terms)
         str_descriptor = ", ".join(descriptor)
-        print("Topic %02d: %s" % (topic_index+1, str_descriptor))
+        print(("Topic %02d: %s" % (topic_index, str_descriptor)))
+
+    return int(k)
 
 
 def plot_top_term_weights(terms, H, topic_index, num_top_terms):
